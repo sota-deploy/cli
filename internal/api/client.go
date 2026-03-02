@@ -92,6 +92,34 @@ type EnvVar struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Domain represents a custom domain returned from the API.
+type Domain struct {
+	ID            string    `json:"id"`
+	ProjectID     string    `json:"project_id"`
+	UserID        string    `json:"user_id"`
+	Domain        string    `json:"domain"`
+	Status        string    `json:"status"`
+	DNSType       string    `json:"dns_type"`
+	LastCheckedAt *string   `json:"last_checked_at,omitempty"`
+	VerifiedAt    *string   `json:"verified_at,omitempty"`
+	ErrorMessage  *string   `json:"error_message,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// DNSInstructions contains the DNS record to configure for a custom domain.
+type DNSInstructions struct {
+	Type  string `json:"type"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// DomainResponse is a domain with DNS setup instructions.
+type DomainResponse struct {
+	Domain          Domain           `json:"domain"`
+	DNSInstructions *DNSInstructions `json:"dns_instructions,omitempty"`
+}
+
 // APIError represents a structured error from the API.
 type APIError struct {
 	StatusCode int
@@ -405,6 +433,98 @@ func (c *Client) ListEnvVars(projectID string) ([]EnvVar, error) {
 // DeleteEnvVar deletes an environment variable.
 func (c *Client) DeleteEnvVar(projectID, key string) error {
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/v1/projects/%s/envs/%s", c.baseURL, projectID, key), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return &APIError{StatusCode: resp.StatusCode, Code: errResp.Error.Code, Message: errResp.Error.Message}
+	}
+
+	return nil
+}
+
+// ListDomains returns all custom domains for a project.
+func (c *Client) ListDomains(projectID string) ([]Domain, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/projects/%s/domains", c.baseURL, projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, &APIError{StatusCode: resp.StatusCode, Code: errResp.Error.Code, Message: errResp.Error.Message}
+	}
+
+	var envelope dataResponse
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, err
+	}
+
+	var domains []Domain
+	if err := json.Unmarshal(envelope.Data, &domains); err != nil {
+		return nil, err
+	}
+	return domains, nil
+}
+
+// AddDomain adds a custom domain to a project and returns DNS instructions.
+func (c *Client) AddDomain(projectID, domain string) (*DomainResponse, error) {
+	body, _ := json.Marshal(map[string]string{"domain": domain})
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/v1/projects/%s/domains", c.baseURL, projectID), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var domainResp DomainResponse
+	if err := c.parseResponse(resp, &domainResp); err != nil {
+		return nil, err
+	}
+	return &domainResp, nil
+}
+
+// GetDomain returns a custom domain by ID with DNS instructions.
+func (c *Client) GetDomain(projectID, domainID string) (*DomainResponse, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/projects/%s/domains/%s", c.baseURL, projectID, domainID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var domainResp DomainResponse
+	if err := c.parseResponse(resp, &domainResp); err != nil {
+		return nil, err
+	}
+	return &domainResp, nil
+}
+
+// RemoveDomain removes a custom domain from a project.
+func (c *Client) RemoveDomain(projectID, domainID string) error {
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/v1/projects/%s/domains/%s", c.baseURL, projectID, domainID), nil)
 	if err != nil {
 		return err
 	}

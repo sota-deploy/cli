@@ -50,6 +50,7 @@ func init() {
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(envCmd)
+	rootCmd.AddCommand(domainsCmd)
 	rootCmd.AddCommand(rollbackCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(projectsCmd)

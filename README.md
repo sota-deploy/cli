@@ -122,6 +122,10 @@ sota auth status
 | `sota status` | Show deployment status |
 | `sota projects list` | List all projects |
 | `sota projects create NAME` | Create a new project |
+| `sota domains list` | List custom domains for project |
+| `sota domains add DOMAIN` | Add custom domain with DNS instructions |
+| `sota domains get ID` | Show domain details and status |
+| `sota domains remove ID` | Remove a custom domain |
 | `sota auth set-key KEY` | Set API key directly |
 | `sota auth status` | Show auth status |
 

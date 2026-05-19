@@ -120,6 +120,29 @@ type DomainResponse struct {
 	DNSInstructions *DNSInstructions `json:"dns_instructions,omitempty"`
 }
 
+// Database represents a managed PostgreSQL database returned from the API.
+type Database struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Status    string    `json:"status"`
+	Host      string    `json:"host"`
+	Port      int       `json:"port"`
+	DBName    string    `json:"db_name"`
+	DBUser    string    `json:"db_user"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DatabaseConnectionDetails contains full connection credentials including the decrypted password.
+type DatabaseConnectionDetails struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	DBName      string `json:"db_name"`
+	DBUser      string `json:"db_user"`
+	Password    string `json:"password"`
+	DatabaseURL string `json:"database_url"`
+}
+
 // APIError represents a structured error from the API.
 type APIError struct {
 	StatusCode int
@@ -520,6 +543,44 @@ func (c *Client) GetDomain(projectID, domainID string) (*DomainResponse, error) 
 		return nil, err
 	}
 	return &domainResp, nil
+}
+
+// GetDatabase returns the database info for a project.
+func (c *Client) GetDatabase(projectID string) (*Database, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/projects/%s/database", c.baseURL, projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var db Database
+	if err := c.parseResponse(resp, &db); err != nil {
+		return nil, err
+	}
+	return &db, nil
+}
+
+// GetDatabaseConnectionDetails returns full connection credentials for a project database.
+func (c *Client) GetDatabaseConnectionDetails(projectID string) (*DatabaseConnectionDetails, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/projects/%s/database/connection", c.baseURL, projectID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var details DatabaseConnectionDetails
+	if err := c.parseResponse(resp, &details); err != nil {
+		return nil, err
+	}
+	return &details, nil
 }
 
 // RemoveDomain removes a custom domain from a project.

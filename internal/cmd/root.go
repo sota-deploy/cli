@@ -55,6 +55,7 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(projectsCmd)
 	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(dbCmd)
 }
 
 // Execute runs the root command.

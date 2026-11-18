@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/fatih/color"
@@ -15,11 +16,24 @@ import (
 	"github.com/sota-io/sota-cli/internal/config"
 )
 
+var (
+	deployGitURL    string
+	deployGitBranch string
+)
+
 var deployCmd = &cobra.Command{
 	Use:   "deploy",
-	Short: "Deploy the current directory",
-	Long:  "Packages the current directory as a tar.gz archive, uploads it to sota.io, and streams build logs.",
-	RunE:  runDeploy,
+	Short: "Deploy the current directory (or a git repo with --git)",
+	Long: `Packages source code as a tar.gz archive, uploads it to sota.io, and streams build logs.
+
+By default the current working directory is packaged. Pass --git <URL> to
+shallow-clone a public repository instead (optionally with --branch).`,
+	RunE: runDeploy,
+}
+
+func init() {
+	deployCmd.Flags().StringVar(&deployGitURL, "git", "", "Public git URL to clone and deploy instead of the current directory")
+	deployCmd.Flags().StringVar(&deployGitBranch, "branch", "", "Branch to check out when --git is set (defaults to repository default branch)")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
@@ -67,7 +81,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("project name required")
 		}
 
-		project, createErr := client.CreateProject(name)
+		// Carry the git URL onto the project record when --git was set so
+		// the dashboard can show the connection.
+		project, createErr := client.CreateProject(name, deployGitURL, deployGitBranch)
 		if createErr != nil {
 			return fmt.Errorf("creating project: %w", createErr)
 		}
@@ -87,10 +103,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	bold.Printf("Deploying %s...\n", projCfg.ProjectSlug)
 	fmt.Println()
 
-	// 3. Create archive
+	// 3. Create archive — from --git URL or from the current directory.
 	cyan.Print("Packaging... ")
-	dir, _ := os.Getwd()
-	archiveFile, size, err := archive.Create(dir)
+	sourceDir, cleanup, err := resolveDeploySource(deployGitURL, deployGitBranch)
+	if err != nil {
+		return fmt.Errorf("preparing source: %w", err)
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	archiveFile, size, err := archive.Create(sourceDir)
 	if err != nil {
 		return fmt.Errorf("creating archive: %w", err)
 	}
@@ -135,4 +157,36 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// resolveDeploySource returns the directory whose contents should be packaged.
+// When gitURL is empty, that's just the current working directory and the
+// cleanup func is nil. Otherwise we shallow-clone the repo into a temp dir and
+// return a cleanup that removes it after the archive has been built.
+func resolveDeploySource(gitURL, gitBranch string) (string, func(), error) {
+	if gitURL == "" {
+		dir, err := os.Getwd()
+		if err != nil {
+			return "", nil, err
+		}
+		return dir, nil, nil
+	}
+
+	tmp, err := os.MkdirTemp("", "sota-git-")
+	if err != nil {
+		return "", nil, fmt.Errorf("temp dir: %w", err)
+	}
+	args := []string{"clone", "--depth=1", "--single-branch"}
+	if gitBranch != "" {
+		args = append(args, "--branch", gitBranch)
+	}
+	args = append(args, "--", gitURL, tmp)
+	cmd := exec.Command("git", args...)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		os.RemoveAll(tmp)
+		return "", nil, fmt.Errorf("git clone: %w", err)
+	}
+	return tmp, func() { os.RemoveAll(tmp) }, nil
 }

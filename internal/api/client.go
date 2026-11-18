@@ -64,6 +64,8 @@ type Project struct {
 	UserID    string    `json:"user_id"`
 	Name      string    `json:"name"`
 	Slug      string    `json:"slug"`
+	GitURL    *string   `json:"git_url,omitempty"`
+	GitBranch *string   `json:"git_branch,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -198,9 +200,20 @@ func slugify(name string) string {
 	return s
 }
 
-// CreateProject creates a new project.
-func (c *Client) CreateProject(name string) (*Project, error) {
-	body, _ := json.Marshal(map[string]string{"name": name, "slug": slugify(name)})
+// CreateProject creates a new project. gitURL and gitBranch are optional —
+// pass empty strings to skip the git association.
+func (c *Client) CreateProject(name, gitURL, gitBranch string) (*Project, error) {
+	payload := map[string]any{
+		"name": name,
+		"slug": slugify(name),
+	}
+	if gitURL != "" {
+		payload["git_url"] = gitURL
+	}
+	if gitBranch != "" {
+		payload["git_branch"] = gitBranch
+	}
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", c.baseURL+"/v1/projects", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
